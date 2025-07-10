@@ -9,6 +9,7 @@ spec:
     repoURL: https://github.com/mateus-lopes/realtime-chat-ui
     targetRevision: main
     path: k8s
+    kustomize: {}
     directory:
       recurse: true
   destination:
