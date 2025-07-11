@@ -105,12 +105,12 @@
 
     - name: Copia YAML do frontend
       copy:
-        src: apps/frontend.yaml
+        src: ../../apps/frontend.yaml
         dest: /root/argo-app-frontend.yaml
 
     - name: Copia YAML do backend
       copy:
-        src: appps/backend.yaml
+        src: ../../apps/backend.yaml
         dest: /root/argo-app-backend.yaml
 
     - name: Aplica aplicações Argo CD
