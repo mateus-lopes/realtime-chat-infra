@@ -44,7 +44,7 @@
     - name: Configura SSH para exibir o banner no login
       lineinfile:
         path: /etc/ssh/sshd_config
-0        regexp: "^#?Banner"
+        regexp: "^#?Banner"
         line: "Banner /etc/banner.txt"
         state: present
         backup: yes
