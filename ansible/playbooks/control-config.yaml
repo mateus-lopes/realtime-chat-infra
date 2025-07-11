@@ -1,0 +1,135 @@
+---
+- name: Configuração básica de servidores Control-Node
+  hosts: control_node
+  become: yes
+  vars_files:
+    - ../vars/cluster.yaml
+
+  tasks:
+    - name: atualiza nome
+      hostname: 
+        name: "control-node"
+
+    - name: atualiza arquivos /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        regexp: "^127.0.1.1"
+        line: "127.0.1.1 control-node"
+        state: present
+
+    - name: atualiza sistema
+      shell: "apt update && apt upgrade -y"
+
+    - name: baixa pacotes essenciais
+      apt:
+        name:
+          - tcpdump
+          - wget
+          - lynx 
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Cria banner personalizado
+      copy:
+        dest: /etc/banner.txt
+        content: |
+          ╔════════════════════════════════════════════════════════╗
+          ║                     CONTROL-NODE                       ║
+          ╠════════════════════════════════════════════════════════╣
+          ║    Acesso restrito: somente usuários autorizados.      ║
+          ╚════════════════════════════════════════════════════════╝
+        mode: '0644'
+
+    - name: Configura SSH para exibir o banner no login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+0        regexp: "^#?Banner"
+        line: "Banner /etc/banner.txt"
+        state: present
+        backup: yes
+      
+    - name: Configura SSH para permitir somente usuários autorizados
+      lineinfile: 
+        path: /etc/ssh/sshd_config
+        regexp: "^#?AllowUsers"
+        line: "AllowUsers albano"
+        state: present
+        backup: yes
+
+    - name: Permite acesso via SSH apenas por chave pública
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PubkeyAuthentication"
+        line: "PubkeyAuthentication yes"
+        state: present
+        backup: yes
+
+    - name: Proibe acesso via SSH por senha
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication yes"
+        line: "PasswordAuthentication no"
+        state: present
+        backup: yes
+
+    - name: Reinicia o serviço SSH para aplicar mudanças
+      service:
+        name: ssh
+        state: restarted
+
+    - name: Baixa e instala K3s
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server --write-kubeconfig-mode 644
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+
+    - name: Aguarda a criação do token
+      wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        timeout: 30
+
+    - name: Copia token para a máquina local
+      fetch:
+        src: /var/lib/rancher/k3s/server/node-token
+        dest: "{{ token_file }}"
+        flat: true
+
+    # albano
+    - name: Instala Argo CD no cluster
+      shell: |
+        kubectl create namespace argocd || true
+        kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+
+    - name: Copia YAML do frontend
+      copy:
+        src: apps/frontend.yaml
+        dest: /root/argo-app-frontend.yaml
+
+    - name: Copia YAML do backend
+      copy:
+        src: appps/backend.yaml
+        dest: /root/argo-app-backend.yaml
+
+    - name: Aplica aplicações Argo CD
+      shell: |
+        kubectl apply -f /root/argo-app-frontend.yaml
+        kubectl apply -f /root/argo-app-backend.yaml
+
+    - name: Valida se os nós estão no cluster
+      shell: kubectl get nodes
+      register: nodes_output
+
+    - name: Exibe os nós do cluster
+      debug:
+        var: nodes_output.stdout
+
+    - name: Valida se os pods estão sendo executados
+      shell: kubectl get pods -A
+      register: pods_output
+
+    - name: Exibe os pods em execução
+      debug:
+        var: pods_output.stdout
